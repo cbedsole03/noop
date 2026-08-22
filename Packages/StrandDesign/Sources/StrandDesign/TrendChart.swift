@@ -222,55 +222,57 @@ public struct TrendChart: View {
         return formatter.string(from: date)
     }
 
-    public var body: some View {
-        Chart {
-            if showsBars {
-                // Bar mode: one value-ramp-filled BarMark per (down-sampled) sample, from the baseline.
-                // The line, area and point marks are all replaced. The same `displayPoints` feed it, so a
-                // dense window is min/max-bucketed to the vertex budget exactly as the line is; hover, the
-                // axes, the domain and accessibility are unchanged (they read the full `points`).
+    @ChartContentBuilder private var marks: some ChartContent {
+        if showsBars {
+            // Bar mode: one value-ramp-filled BarMark per (down-sampled) sample, from the baseline.
+            // The line, area and point marks are all replaced. The same `displayPoints` feed it, so a
+            // dense window is min/max-bucketed to the vertex budget exactly as the line is; hover, the
+            // axes, the domain and accessibility are unchanged (they read the full `points`).
+            ForEach(displayPoints) { p in
+                BarMark(
+                    x: .value("Date", p.date),
+                    y: .value("Value", p.value)
+                )
+                .foregroundStyle(valueGradient)
+            }
+        } else {
+            if showsArea {
                 ForEach(displayPoints) { p in
-                    BarMark(
-                        x: .value("Date", p.date),
-                        y: .value("Value", p.value)
-                    )
-                    .foregroundStyle(valueGradient)
-                }
-            } else {
-                if showsArea {
-                    ForEach(displayPoints) { p in
-                        AreaMark(
-                            x: .value("Date", p.date),
-                            y: .value("Value", p.value)
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(areaFillGradient)
-                    }
-                }
-                ForEach(displayPoints) { p in
-                    LineMark(
+                    AreaMark(
                         x: .value("Date", p.date),
                         y: .value("Value", p.value)
                     )
                     .interpolationMethod(.catmullRom)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                    .foregroundStyle(valueGradient)
+                    .foregroundStyle(areaFillGradient)
                 }
-                // 18pt dots are invisible on dense series (e.g. a 365-day year) but still cost the
-                // GPU a mark each — hide them past a threshold; the line carries the data there. The gate
-                // stays on the full `points.count` (≤60 is never downsampled, so displayPoints == points).
-                if points.count <= 60 {
-                    ForEach(displayPoints) { p in
-                        PointMark(
-                            x: .value("Date", p.date),
-                            y: .value("Value", p.value)
-                        )
-                        .symbolSize(18)
-                        .foregroundStyle(StrandPalette.sample(stops: gradient.toStops(), at: unit(p.value)))
-                    }
+            }
+            ForEach(displayPoints) { p in
+                LineMark(
+                    x: .value("Date", p.date),
+                    y: .value("Value", p.value)
+                )
+                .interpolationMethod(.catmullRom)
+                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                .foregroundStyle(valueGradient)
+            }
+            // 18pt dots are invisible on dense series (e.g. a 365-day year) but still cost the
+            // GPU a mark each — hide them past a threshold; the line carries the data there. The gate
+            // stays on the full `points.count` (≤60 is never downsampled, so displayPoints == points).
+            if points.count <= 60 {
+                ForEach(displayPoints) { p in
+                    PointMark(
+                        x: .value("Date", p.date),
+                        y: .value("Value", p.value)
+                    )
+                    .symbolSize(18)
+                    .foregroundStyle(StrandPalette.sample(stops: gradient.toStops(), at: unit(p.value)))
                 }
             }
         }
+    }
+
+    public var body: some View {
+        Chart { marks }
         // Domain drives BOTH the axis extent and the plot clip. A caller that wants a top-of-range
         // peak (and the top axis label) to clear the clip passes a `yDomain` whose upper bound sits a
         // little above the data — pure data-space headroom, so no macOS14/iOS17 plot-dimension endPadding
