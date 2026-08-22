@@ -171,6 +171,17 @@ public struct TrendChart: View {
         LinearGradient(gradient: gradient, startPoint: .bottom, endPoint: .top)
     }
 
+    private var areaFillGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                StrandPalette.sample(stops: gradient.toStops(), at: unit(averageValue)).opacity(0.28),
+                Color.clear
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
     /// The Y domain actually applied to the axis + plot clip: the explicit `yDomain` when a caller
     /// supplied one (e.g. a data-fitted axis with top headroom), else the gradient's `valueRange`.
     /// Exposed internally so a unit test can pin the resolution without rendering the chart.
@@ -233,15 +244,7 @@ public struct TrendChart: View {
                             y: .value("Value", p.value)
                         )
                         .interpolationMethod(.catmullRom)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    StrandPalette.sample(stops: gradient.toStops(), at: unit(averageValue)).opacity(0.28),
-                                    Color.clear
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
+                        .foregroundStyle(areaFillGradient)
                     }
                 }
                 ForEach(displayPoints) { p in
