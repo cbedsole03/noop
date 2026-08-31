@@ -3742,20 +3742,14 @@ struct TodayView: View {
             // owner's device, or the engine hasn't re-scored yet), show "toggle ON · no estimate yet" so
             // the user can tell "toggle off" apart from "toggle on but no data" — a silent blank reads as
             // broken.
-            let spo2CandidateOn = PuffinExperiment.spo2CandidateDisplayEnabled
-            let candidateTail = spo2CandidateOn ? sparks["spo2_candidate"]?.last : nil
+            let candidateTail = sparks["spo2_candidate"]?.last
             let spo2Value = spo2.value == "—" && candidateTail != nil
                 ? String(format: "%.0f%%", locale: AppLanguage.activeLocale, candidateTail!)
                 : spo2.value
-            let spo2Caption: String = spo2.value == "—" && candidateTail != nil
-                ? String(localized: "strap estimate (unverified)")
-                : (spo2.value == "—" && spo2CandidateOn
-                   ? String(localized: "toggle ON · no estimate yet")
-                   : (spo2.caption ?? ""))
             StatTile(
                 label: "Blood Oxygen",
                 value: spo2Value,
-                caption: spo2Caption,
+                caption: spo2.caption ?? "",
                 accent: spo2Value == "—" ? StrandPalette.textPrimary : StrandPalette.metricCyan,
                 sparkline: spo2.value == "—" && candidateTail != nil ? sparks["spo2_candidate"] : sparks["spo2"],
                 sparkColor: StrandPalette.metricCyan

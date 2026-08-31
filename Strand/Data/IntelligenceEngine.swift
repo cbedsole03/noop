@@ -774,13 +774,12 @@ final class IntelligenceEngine: ObservableObject {
         // the 5/MG cumulative @57 series + wrap-aware deltas + dropped deltas, replayed below tagged `.steps`.
         // The trace recomputes the SAME wrap-aware sum analyzeDay already did, so the steps total is unchanged.
         let stepsTraceActive = TestCentre.active(.steps)
-        // #103/queue-11a: read the SpO₂ candidate display toggle ONCE here (off the detached executor,
-        // matching the other toggle reads above). When ON, each night's candidate mean (WHOOP:
+        // #103/queue-11a: each night's candidate mean (WHOOP:
         // `spo2_candidate_82`; Oura: ceiling@100 `0x6F`, see the per-day block below) is written to
         // metricSeries as "spo2_candidate" under the "-noop" device ID, so the Blood Oxygen tile can
-        // surface it as a "strap estimate (unverified)" fallback. Default OFF per the derived-biosignal
-        // rule (CLAUDE.md) — neither candidate is a validated calibration.
-        let spo2CandidateDisplayOn = PuffinExperiment.spo2CandidateDisplayEnabled
+        // surface it as a separately named research estimate. This never writes `spo2Pct` and never feeds
+        // a score; the Blood Oxygen detail screen carries the prominent validation disclaimer.
+        let spo2CandidateDisplayOn = true
         // #1545: the Effort TRIMP recipe, read ONCE per pass. Global (same for every day), so it folds
         // into the config signature below rather than the per-day key.
         let effortMethodGlobal = PuffinExperiment.effortMethod

@@ -1191,20 +1191,16 @@ struct LiquidTodayView: View {
         case .restingHr:
             ktile(String(localized: "Rest HR"), icon: keyMetricIcon(metric), intText(rhr), "bpm", StrandPalette.metricRose, fracOver(rhr, 100), key: "rhr")
         case .bloodOxygen:
-            // Queue 11a: the Liquid tile used to read `spo2Pct` only, with no candidate fallback at all
-            // (unlike the classic `TodayView`/`VitalSignsSummary`), so an Oura-only or BLE-only WHOOP
-            // 5/MG install with the experimental toggle ON still saw a bare "—" here. Falls back to the
-            // device-conditional "spo2_candidate" mean (WHOOP: `spo2_candidate_82`; Oura: ceiling@100
-            // `0x6F`, see `AnalyticsEngine.nightlySpo2CeilingMean`) only when `spo2Pct` is nil AND the
-            // toggle is ON — same gating as the classic tile, never as the default.
-            let spo2Real = displayDay?.spo2Pct ?? vitalsDay?.spo2Pct
-            let spo2CandidateOn = PuffinExperiment.spo2CandidateDisplayEnabled
-            let spo2CandidateValue = spo2Real == nil && spo2CandidateOn
-                ? spo2CandidateByDay[cachedDisplayDay?.day ?? selectedDayKey]
-                : nil
-            let spo2 = spo2Real ?? spo2CandidateValue
-            ktile(String(localized: "Blood Oxygen"), icon: keyMetricIcon(metric), intText(spo2), "%", StrandPalette.metricCyan, fracOver(spo2, 100), key: spo2CandidateValue != nil ? "spo2_candidate" : "spo2",
-                  caption: spo2CandidateValue != nil ? String(localized: "strap estimate (unverified)") : nil)
+            let calibrated = displayDay?.spo2Pct ?? vitalsDay?.spo2Pct
+            let candidate = calibrated == nil ? windowedSpark("spo2_candidate").last : nil
+            let spo2 = calibrated ?? candidate
+            let isEstimate = calibrated == nil && candidate != nil
+            let detail = MetricCatalog.all.first(where: { $0.key == "spo2" })
+            ktile(String(localized: "Blood Oxygen"), icon: keyMetricIcon(metric),
+                  spo2.map { String(format: "%.0f%%", locale: AppLanguage.activeLocale, $0) } ?? "—",
+                  "", StrandPalette.metricCyan,
+                  fracOver(spo2, 100), key: isEstimate ? "spo2_candidate" : "spo2",
+                  detailMetric: detail)
         case .respiratory:
             let resp = displayDay?.respRateBpm ?? vitalsDay?.respRateBpm ?? respDay?.respRateBpm
             ktile(String(localized: "Respiratory"), icon: keyMetricIcon(metric), resp.map { String(format: "%.1f", locale: AppLanguage.activeLocale, $0) } ?? "—", "rpm", StrandPalette.accent, fracOver(resp, 24), key: "resp_rate")
@@ -1212,7 +1208,10 @@ struct LiquidTodayView: View {
             ktile(String(localized: "Steps"), icon: keyMetricIcon(metric), stepsText, "", StrandPalette.chargeColor,
                   fracOver(stepCount, 10000), key: stepsDetailKey, detailMetric: stepsDetailMetric)
         case .weight:
-            ktile(String(localized: "Weight"), icon: keyMetricIcon(metric), "—", "", StrandPalette.metricAmber, nil, key: "weight")
+            let kg = windowedSpark("weight").last
+            let shown = UnitFormatter.massFromKilograms(kg ?? profile.weightKg, system: unitSystem)
+            ktile(String(localized: "Weight"), icon: keyMetricIcon(metric), shown,
+                  kg == nil ? "profile" : "", StrandPalette.metricAmber, nil, key: "weight")
         case .calories:
             // #616: imported-first value (imported ?: activeKcalEst) + route the tap to the matching
             // detail source, so the number, its sparkline and the chart it opens all agree.
@@ -1462,6 +1461,7 @@ struct LiquidTodayView: View {
         async let stepsA = repo.exploreSeries(key: "steps_est", source: "my-whoop")
         // Queue 11a: SpO₂ candidate fallback (see `spo2CandidateByDay`'s declaration).
         async let spo2CandA = repo.exploreSeries(key: "spo2_candidate", source: "my-whoop")
+        async let weightA = repo.exploreSeries(key: "weight", source: "apple-health")
         async let appleA = repo.appleDailyRows()
         async let hrA = repo.hrBuckets(from: from, to: to, bucketSeconds: 300)
         async let wkA = repo.workoutRows()
@@ -1479,6 +1479,7 @@ struct LiquidTodayView: View {
 
         let restSeries = await restA
         let stepsSeries = await stepsA
+        let weightSeries = await weightA
         let restByDay = Dictionary(restSeries.map { ($0.day, $0.value) }, uniquingKeysWith: { _, last in last })
         // Selected day's Rest; tail fallback only at offset 0 (a past day with no row shows nothing) AND
         // only when the tail night is still fresh. #977: a live 5.0 whose sleep never scores (no overnight
@@ -1531,6 +1532,8 @@ struct LiquidTodayView: View {
             "skin_temp": sparkRows.compactMap { r in r.skinTempDevC.map { (r.day, $0) } },
             "resp_rate": sparkRows.compactMap { r in r.respRateBpm.map { (r.day, $0) } },
             "steps": sparkRows.compactMap { r in r.steps.map { (r.day, Double($0)) } },
+            "weight": weightSeries.filter { $0.day >= sparkCutoff && $0.day <= selectedDayKey }
+                .map { ($0.day, $0.value) },
             // #616: the Calories tile drew no trend line — this dict had no matching entry, so windowedSpark
             // returned []. Bank the imported-first calorie series (built above) so the sparkline matches the
             // tile's imported-first number and a Health-Connect / Apple-only user gets a trend.

@@ -195,7 +195,9 @@ struct BackupSyncView: View {
                         .font(StrandFont.overline).foregroundStyle(StrandPalette.textTertiary)
                     TextField("https://noop.example.com or http://server.local", text: $serverArchiveBaseURL)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
                         .textInputAutocapitalization(.never)
+                        #endif
                         .autocorrectionDisabled(true)
                         .onChangeCompat(of: serverArchiveBaseURL) { ServerArchiveSync.baseURL = $0 }
                 }
