@@ -194,6 +194,11 @@ enum PuffinExperiment {
     static let lowRefreshKey = "noopLowRefresh"
     static var lowRefreshEnabled: Bool { UserDefaults.standard.bool(forKey: lowRefreshKey) }
 
+    /// Disconnect after each full history transfer and reconnect on an hourly best-effort schedule.
+    /// The strap continues banking data locally between connections. Default off.
+    static let hourlyConnectOnlyKey = "noopHourlyConnectOnly"
+    static var hourlyConnectOnlyEnabled: Bool { UserDefaults.standard.bool(forKey: hourlyConnectOnlyKey) }
+
     /// Battery-% threshold for power saving (10–30). Default 20 (0 in the store means "unset" → 20).
     static let powerSavingBatteryPctKey = "noopPowerSavingBatteryPct"
     static var powerSavingBatteryPct: Int {

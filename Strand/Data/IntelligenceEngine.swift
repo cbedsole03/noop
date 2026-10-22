@@ -1419,9 +1419,15 @@ final class IntelligenceEngine: ObservableObject {
                             spo2CandidateMean = cand.mean
                         }
                     } else {
+                        // WHOOP 4.0 v12 captures carry the experimental @85 tail byte in the durable
+                        // SpO2 table. Prefer it when present; WHOOP 5/MG falls through to the existing
+                        // @82 candidate stored in the v18 auxiliary table.
+                        if let cand = AnalyticsEngine.nightlyWhoop4Spo2CandidateMean(res.sleepSessions, spo2: spo2) {
+                            spo2CandidateMean = cand.mean
+                        }
                         let auxSamples = (try? await store.v18AuxSamples(
                             deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
-                        if !auxSamples.isEmpty {
+                        if spo2CandidateMean == nil, !auxSamples.isEmpty {
                             if let cand = AnalyticsEngine.nightlySpo2CandidateMean(res.sleepSessions, aux: auxSamples) {
                                 spo2CandidateMean = cand.mean
                             }

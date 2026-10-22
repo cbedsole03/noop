@@ -9,8 +9,8 @@ import StrandDesign
 // UNCHANGED — `AppModel.applyPowerSaving()` still reads every value from `PuffinExperiment`, so moving
 // the surface cannot alter behaviour.
 //
-// The master gates the sub-options: the threshold slider, "Pause HRV capture" and "Low refresh" only
-// appear (and only apply) while Power saving is on — `applyPowerSaving` ANDs each one with the master.
+// The master gates the battery-adaptive sub-options. Hourly connect-only is an independent transport
+// preference and remains available at every strap charge.
 struct PowerSavingView: View {
     @EnvironmentObject var model: AppModel
 
@@ -19,6 +19,7 @@ struct PowerSavingView: View {
     /// Stored INVERTED so the default (absent = false) reads as "HRV pause on". The toggle shows `!this`.
     @AppStorage(PuffinExperiment.pauseHrvDisabledKey) private var pauseHrvDisabled = false
     @AppStorage(PuffinExperiment.lowRefreshKey) private var lowRefreshEnabled = false
+    @AppStorage(PuffinExperiment.hourlyConnectOnlyKey) private var hourlyConnectOnly = false
 
     var body: some View {
         ScreenScaffold(title: "Power saving",
@@ -96,7 +97,22 @@ struct PowerSavingView: View {
                                 .font(StrandFont.caption)
                                 .foregroundStyle(StrandPalette.textTertiary)
                                 .fixedSize(horizontal: false, vertical: true)
+
                         }
+
+                        rowDivider
+                        Toggle(isOn: $hourlyConnectOnly) {
+                            Text("Hourly connect only")
+                                .font(StrandFont.subhead)
+                                .foregroundStyle(StrandPalette.textPrimary)
+                        }
+                        .toggleStyle(.switch)
+                        .tint(StrandPalette.accent)
+                        .onChangeCompat(of: hourlyConnectOnly) { _ in model.applyPowerSaving() }
+                        Text("Disconnect after the full transfer, then reconnect about once an hour. This remains active at any strap battery level. The strap stores data between transfers; Live and manual sync can still connect immediately.")
+                            .font(StrandFont.caption)
+                            .foregroundStyle(StrandPalette.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

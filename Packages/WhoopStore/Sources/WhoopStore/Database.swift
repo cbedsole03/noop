@@ -887,6 +887,14 @@ extension WhoopStore {
                 t.add(column: "skinTempC", .double)
             }
         }
+        // v41/v42: preserve the WHOOP 4.0 v12 overnight optical tail bytes used by the experimental
+        // comparator. Nullable keeps all existing rows and non-WHOOP4 records unchanged.
+        migrator.registerMigration("v41-whoop4-spo2-byte85") { db in
+            try db.alter(table: "spo2Sample") { t in t.add(column: "auxByte85", .integer) }
+        }
+        migrator.registerMigration("v42-whoop4-spo2-byte86") { db in
+            try db.alter(table: "spo2Sample") { t in t.add(column: "auxByte86", .integer) }
+        }
         return migrator
     }
 }

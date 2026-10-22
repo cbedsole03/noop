@@ -370,6 +370,24 @@ func registerPostHooks() {
             }
             fb.add(fld.off, fld.len, fld.name, fld.cat, value: value, note: fld.note)
         }
+        // WHOOP 4.0 v12 research fields. @84 is the packed band state; @85 and @86 are the two
+        // overnight optical tail bytes seen in the user's captures. Preserve them verbatim and expose
+        // @85 only as a candidate when the band reports asleep and the value is percentage-shaped.
+        // This is instrumentation, not a validated SpO2 decode.
+        if version == 12, length > 86, frame.count > 86 {
+            let stateByte = Int(frame[84])
+            let aux85 = Int(frame[85])
+            let aux86 = Int(frame[86])
+            fb.add(84, 1, "whoop4_sleep_state_byte", "sleep", value: .int(stateByte))
+            fb.add(85, 1, "aux_byte_85", "status", value: .int(aux85))
+            fb.add(86, 1, "aux_byte_86", "status", value: .int(aux86))
+            fb.parsed["whoop4_sleep_state_byte"] = .int(stateByte)
+            fb.parsed["aux_byte_85"] = .int(aux85)
+            fb.parsed["aux_byte_86"] = .int(aux86)
+            if stateByte >> 4 == 2, (70...100).contains(aux85) {
+                fb.parsed["spo2_candidate_85"] = .int(aux85)
+            }
+        }
         var rrVals: [Int] = []
         if let rrFirst = entry.rrFirstOff {
             let rrn = fb.parsed["rr_count"]?.intValue ?? 0

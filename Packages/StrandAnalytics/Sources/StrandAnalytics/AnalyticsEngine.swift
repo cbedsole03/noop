@@ -1231,6 +1231,25 @@ public enum AnalyticsEngine {
         return (mean: Int((Double(sum) / Double(kept)).rounded()), samples: kept)
     }
 
+    /// Experimental WHOOP 4.0 v12 comparator. The captures show @85 in a percentage-shaped range during
+    /// asleep-state optical bursts, but no independent calibration or vendor definition exists yet.
+    /// Keep this diagnostic-only and separate from the validated metric fields.
+    public static func nightlyWhoop4Spo2CandidateMean(
+        _ sessions: [SleepSession], spo2: [SpO2Sample]
+    ) -> (mean: Int, samples: Int)? {
+        guard !sessions.isEmpty, !spo2.isEmpty else { return nil }
+        var sum = 0
+        var kept = 0
+        for sample in spo2 {
+            guard let value = sample.auxByte85, (70...100).contains(value) else { continue }
+            guard sessions.contains(where: { $0.start <= sample.ts && sample.ts <= $0.end }) else { continue }
+            sum += value
+            kept += 1
+        }
+        guard kept > 0 else { return nil }
+        return (mean: Int((Double(sum) / Double(kept)).rounded()), samples: kept)
+    }
+
     /// The plausible range for a raw Oura `0x6F` SpO2 sample before the ceiling transform below.
     /// Excludes the mis-scaled `dc_raw`/perfusion-channel contamination (-1016 … 11,709,098,
     /// OURA_PROTOCOL.md §6.5.0.1) by three orders of magnitude, same bounds as

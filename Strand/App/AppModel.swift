@@ -498,6 +498,9 @@ final class AppModel: ObservableObject {
         let on = PuffinExperiment.powerSavingEnabled
         // Sub-option: only in effect while the Power-saving master is on, like the HRV-pause lever below.
         ble.setLowRefreshMode(on && PuffinExperiment.lowRefreshEnabled)
+        // Hourly connect-only is a user-selected transport mode, not a low-battery response. It remains
+        // active at every strap charge, independently of the battery threshold and power-saving master.
+        ble.setHourlyConnectOnly(PuffinExperiment.hourlyConnectOnlyEnabled)
         ble.setLowBatteryOffloadThrottle(on ? PuffinExperiment.powerSavingBatteryPct : 0)
         // HRV pause is battery-%-aware like the offload lever — pass the same threshold.
         ble.setPauseCaptureOnPowerSave(on && PuffinExperiment.pauseHrvOnPowerSaveEnabled,

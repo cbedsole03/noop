@@ -603,6 +603,11 @@ public final class BLEManager: NSObject, ObservableObject {
     /// high-freq-sync), so each periodic tick just routes through requestSync(.periodic) → beginBackfill
     /// (SEND_HISTORICAL_DATA + watchdog), subject to the BackfillPolicy floor.
     private var backfillTimer: DispatchSourceTimer?
+    /// In hourly connect-only mode the strap banks data while disconnected; this timer starts the next
+    /// full connection attempt. iOS background execution is best-effort, so a delayed wake simply causes
+    /// the next opportunity to drain the accumulated backlog.
+    private var hourlyConnectTimer: DispatchSourceTimer?
+    private var hourlyConnectOnly = false
     /// User-elected hourly background-sync cadence (Settings → Power saving → "Low refresh"). Default off.
     private var lowRefreshMode = false
     // The timer fires this often, but BackfillPolicy.periodicFloorSeconds is the real floor (a recent
@@ -625,6 +630,8 @@ public final class BLEManager: NSObject, ObservableObject {
     /// not touch continuous HRV capture (that is what "Pause HRV capture" and #927's overnight window
     /// are for). Fewer periodic offloads = fewer reconnect bursts, which is the measured 4.0 drain.
     static let lowRefreshBackfillIntervalSeconds = 3600
+    static let hourlyConnectIntervalSeconds = 3600
+    static let hourlyConnectTimerLeewaySeconds = 60
 
     /// Pure battery-adaptive gate (#477), the twin of Android `WhoopBleClient.idleThrottleActive`. Keyed
     /// on the STRAP's battery: armed by `thresholdPct` > 0, engages while the strap is discharging at/below
@@ -2549,6 +2556,8 @@ public final class BLEManager: NSObject, ObservableObject {
             // re-offload (0 new rows) stops instead of spinning on already-synced data.
             maybeAutoContinueBackfill(trimAdvanced: trimAdvanced,
                                       persistedSensorRows: persistedSensorRows)
+        } else if hourlyConnectOnly && !screenWantsRealtime {
+            finishHourlyConnectionIfIdle()
         }
     }
 
@@ -2602,6 +2611,9 @@ public final class BLEManager: NSObject, ObservableObject {
                 if count < BackfillContinuation.defaultMaxAutoContinues {
                     consecutiveAutoContinues = 0
                 }
+                if hourlyConnectOnly && !screenWantsRealtime {
+                    finishHourlyConnectionIfIdle()
+                }
                 return
             }
             // Guard against a race: a real backfill may already have re-started (periodic/connect) in the
@@ -2615,6 +2627,13 @@ public final class BLEManager: NSObject, ObservableObject {
             // consecutive-cap above is the runaway guard.
             requestSync(.autoContinue)
         }
+    }
+
+    private func finishHourlyConnectionIfIdle() {
+        guard hourlyConnectOnly, !screenWantsRealtime, state.connected else { return }
+        scheduleHourlyConnect()
+        log("Hourly connect-only: full transfer finished; disconnecting until next scheduled sync")
+        disconnect()
     }
 
     /// On-device archive for HISTORICAL_DATA record frames that failed decode (#77 / #91).
@@ -2774,6 +2793,10 @@ public final class BLEManager: NSObject, ObservableObject {
         // what continuous capture keeps; the reconciler decides whether to disarm that.
         send(.sendR10R11Realtime, payload: [0x00])
         reconcileRealtime()
+        if hourlyConnectOnly && !backfilling && state.connected {
+            scheduleHourlyConnect()
+            disconnect()
+        }
     }
 
     /// The "Continuous HRV capture" preference flipped: hold the realtime stream open with no Live screen
@@ -2796,6 +2819,28 @@ public final class BLEManager: NSObject, ObservableObject {
     /// interrupted (the cadence is re-read at each re-arm). Twin of Android `setLowRefreshMode`.
     public func setLowRefreshMode(_ enabled: Bool) {
         lowRefreshMode = enabled
+    }
+
+    /// Settings: keep the strap disconnected between full history transfers. This deliberately does not
+    /// alter the persisted Low refresh cadence or any user preference for continuous capture; it is a
+    /// stronger transport policy that suppresses background realtime and tears down after a transfer.
+    public func setHourlyConnectOnly(_ enabled: Bool) {
+        hourlyConnectOnly = enabled
+        if enabled {
+            backfillTimer?.cancel()
+            backfillTimer = nil
+            reconcileRealtime()
+            if state.connected && !backfilling && !screenWantsRealtime {
+                requestSync(.manual)
+            } else if !state.connected {
+                scheduleHourlyConnect()
+            }
+        } else {
+            hourlyConnectTimer?.cancel()
+            hourlyConnectTimer = nil
+            if state.connected { startBackfillTimer() }
+            reconcileRealtime()
+        }
     }
 
     /// #477 (Settings): pause the background continuous-HRV stream when the strap is low. Keyed on the
@@ -2885,7 +2930,7 @@ public final class BLEManager: NSObject, ObservableObject {
     /// framing); otherwise the want is remembered and the post-bond branch arms it. Mirrors the Android
     /// `reconcileRealtime`.
     private func reconcileRealtime() {
-        let want = screenWantsRealtime || continuousCaptureWantsNow()
+        let want = screenWantsRealtime || (!hourlyConnectOnly && continuousCaptureWantsNow())
         wantsRealtime = want   // keep-alive + post-bond arm-on-connect read this derived value
         guard want != realtimeArmed else { return }                      // no edge — nothing to send
         guard selectedModel.deviceFamily == .whoop4 || state.bonded else { return }   // can't reach the strap yet
@@ -4147,7 +4192,7 @@ public final class BLEManager: NSObject, ObservableObject {
         // the false→true edge. Ticks with no transition cost one predicate evaluation. This runs BEFORE
         // the WHOOP4-only guard below so a 5/MG stream also disarms/re-arms on the window edges (send()
         // routes the 5/MG toggle and drops the WHOOP4-framed R10/R11 stop for it).
-        let captureWantNow = screenWantsRealtime || continuousCaptureWantsNow()
+        let captureWantNow = screenWantsRealtime || (!hourlyConnectOnly && continuousCaptureWantsNow())
         if wantsRealtime != captureWantNow, keepRealtimeForData, !screenWantsRealtime {
             if captureWantNow {
                 log("Continuous HRV: overnight window opened; arming the realtime stream (#927)")
@@ -4176,6 +4221,7 @@ public final class BLEManager: NSObject, ObservableObject {
     }
 
     private func startBackfillTimer() {
+        guard !hourlyConnectOnly else { return }
         backfillTimer?.cancel()
         // #477: one-shot, re-armed by triggerPeriodicBackfill() with a fresh (battery-adaptive) interval
         // each tick — so the cadence can stretch/relax as power state changes (was a fixed repeating timer).
@@ -4186,6 +4232,25 @@ public final class BLEManager: NSObject, ObservableObject {
         t.setEventHandler { [weak self] in self?.triggerPeriodicBackfill() }
         t.resume()
         backfillTimer = t
+    }
+
+    private func scheduleHourlyConnect() {
+        guard hourlyConnectOnly else { return }
+        hourlyConnectTimer?.cancel()
+        let t = DispatchSource.makeTimerSource(queue: .main)
+        t.schedule(deadline: .now() + .seconds(BLEManager.hourlyConnectIntervalSeconds),
+                   leeway: .seconds(BLEManager.hourlyConnectTimerLeewaySeconds))
+        t.setEventHandler { [weak self] in self?.hourlyConnectFire() }
+        t.resume()
+        hourlyConnectTimer = t
+    }
+
+    private func hourlyConnectFire() {
+        hourlyConnectTimer?.cancel()
+        hourlyConnectTimer = nil
+        guard hourlyConnectOnly, !state.connected else { return }
+        log("Hourly connect-only: starting scheduled full sync")
+        connectFromSystem(model: .persisted)
     }
 
     /// The single gated entry point for every historical-offload kick. Applies the connection/state
@@ -5925,7 +5990,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
         // #927: RE-DERIVE the want at arm time (same reasoning as the 5/MG branch above): a reconnect
         // outside the overnight window must not arm the flood from a stale precomputed `wantsRealtime`
         // (up to a keep-alive tick stale); the keep-alive would then hold it armed for another 30 s.
-        let realtimeWantNow = screenWantsRealtime || continuousCaptureWantsNow()
+        let realtimeWantNow = screenWantsRealtime || (!hourlyConnectOnly && continuousCaptureWantsNow())
         wantsRealtime = realtimeWantNow
         if realtimeWantNow {
             if standardHRFallback {

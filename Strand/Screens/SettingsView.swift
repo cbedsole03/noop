@@ -62,7 +62,7 @@ struct SettingsView: View {
     /// See [PuffinExperiment.ecgRawDataKey].
     @AppStorage(PuffinExperiment.ecgRawDataKey) private var ecgRawDataEnabled = false
 
-    /// #103 opt-in: surfaces the WHOOP 5/MG `spo2_candidate_82` nightly mean in the Blood Oxygen tile
+    /// #103 opt-in: surfaces the WHOOP candidate nightly mean in the Blood Oxygen tile
     /// as a "strap estimate (unverified)" fallback when no calibrated `spo2Pct` exists. Display-only —
     /// writes nothing to the strap. See [PuffinExperiment.spo2CandidateDisplayKey].
     @AppStorage(PuffinExperiment.spo2CandidateDisplayKey) private var spo2CandidateDisplayEnabled = false
@@ -1735,7 +1735,9 @@ struct SettingsView: View {
         liquidTodayCard
         liveSessionsCard
         if showFiveMGControls { fiveMGCard }
-        if showFiveMGControls || model.repo.activeDeviceIsOura { spo2CandidateCard }
+        if showFiveMGControls || selectedWhoopModelRaw == WhoopModel.whoop4.rawValue || model.repo.activeDeviceIsOura {
+            spo2CandidateCard
+        }
         sleepStagingCard
         rawSensorDiagnosticsCard
     }
@@ -2223,7 +2225,7 @@ struct SettingsView: View {
     /// zero `spo2_candidate` rows ever written on such an install despite pass-2 scoring running daily,
     /// and a full screenshot sweep of Settings confirmed the section never renders. Same split as
     /// `rawSensorDiagnosticsCard` just below (#22) — this card shows for a 5/MG OR an active Oura
-    /// device, not just a 5/MG.
+    /// device, including WHOOP 4.0 now that its v12 @85 research candidate is persisted.
     private var spo2CandidateCard: some View {
         SettingsSection(
             icon: "lungs.fill",
@@ -2232,7 +2234,7 @@ struct SettingsView: View {
         ) {
             VStack(alignment: .leading, spacing: NoopMetrics.rowSpacing) {
                 Toggle(isOn: $spo2CandidateDisplayEnabled) {
-                    Text("Blood Oxygen: strap estimate (WHOOP 5/MG, Oura)")
+                    Text("Blood Oxygen: strap estimate")
                         .font(StrandFont.subhead)
                         .foregroundStyle(StrandPalette.textPrimary)
                 }
@@ -2245,7 +2247,7 @@ struct SettingsView: View {
                     // the HRV window toggle above (analyzeRecent → refresh).
                     Task { await model.intelligence.analyzeRecent(); await model.repo.refresh() }
                 }
-                Text("Your WHOOP 5.0/MG sends a strap-computed SpO₂ percentage (the @82 candidate byte) every second — an 8-night independent validation tracked it at corr +0.99 against the WHOOP app, but two nights on the original test device moved the OPPOSITE direction, so device/firmware variance is unresolved. An Oura ring's own SpO₂ reading runs high on the wire (over 100% on a fifth to a half of samples on a clean night); this instead surfaces the ring's mean with each sample capped at 100% first, which has matched the Oura app's own displayed value on every full night checked against it so far, though only a few nights. Turning this on surfaces whichever applies to your device as \"strap estimate (unverified)\" in the Blood Oxygen tile when no calibrated import exists. It never feeds recovery or illness scoring. WHOOP 4.0 has no @82 stream, so this does nothing there.")
+                Text("WHOOP 5.0/MG uses the @82 candidate byte; WHOOP 4.0 uses the experimental overnight @85 tail-byte candidate; Oura uses its capped raw optical value. These are device- and firmware-dependent research estimates, not validated clinical readings. Turning this on surfaces the applicable value as \"strap estimate (unverified)\" when no calibrated reading exists. It never feeds recovery or illness scoring.")
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)

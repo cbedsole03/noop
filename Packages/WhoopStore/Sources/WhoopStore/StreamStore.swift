@@ -230,11 +230,11 @@ extension WhoopStore {
             }
             if !streams.spo2.isEmpty {
                 let stmt = try db.cachedStatement(sql: """
-                    INSERT INTO spo2Sample (deviceId, ts, red, ir) VALUES (?, ?, ?, ?)
+                    INSERT INTO spo2Sample (deviceId, ts, red, ir, auxByte85, auxByte86) VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(deviceId, ts) DO NOTHING
                     """)
                 for s in streams.spo2 {
-                    try stmt.execute(arguments: [deviceId, s.ts, s.red, s.ir])
+                    try stmt.execute(arguments: [deviceId, s.ts, s.red, s.ir, s.auxByte85, s.auxByte86])
                     spo2 += db.changesCount
                 }
             }
@@ -459,7 +459,7 @@ extension WhoopStore {
             }
             // spo2: stream=spo2 → spo2_red/spo2_ir (cols 11–12).
             for r in try Row.fetchAll(db, sql:
-                "SELECT ts, red, ir FROM spo2Sample WHERE deviceId = ? AND ts >= ? ORDER BY ts",
+                "SELECT ts, red, ir, auxByte85, auxByte86 FROM spo2Sample WHERE deviceId = ? AND ts >= ? ORDER BY ts",
                 arguments: [deviceId, floor]) {
                 var row = RawCSVRow(ts: r["ts"]); row.cols[0] = "spo2"
                 row.cols[9] = WhoopStore.intStr(r["red"])
