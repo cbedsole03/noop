@@ -890,10 +890,30 @@ extension WhoopStore {
         // v41/v42: preserve the WHOOP 4.0 v12 overnight optical tail bytes used by the experimental
         // comparator. Nullable keeps all existing rows and non-WHOOP4 records unchanged.
         migrator.registerMigration("v41-whoop4-spo2-byte85") { db in
-            try db.alter(table: "spo2Sample") { t in t.add(column: "auxByte85", .integer) }
+            let columns = try db.columns(in: "spo2Sample")
+            if !columns.contains(where: { $0.name == "auxByte85" }) {
+                try db.alter(table: "spo2Sample") { t in t.add(column: "auxByte85", .integer) }
+            }
         }
         migrator.registerMigration("v42-whoop4-spo2-byte86") { db in
-            try db.alter(table: "spo2Sample") { t in t.add(column: "auxByte86", .integer) }
+            let columns = try db.columns(in: "spo2Sample")
+            if !columns.contains(where: { $0.name == "auxByte86" }) {
+                try db.alter(table: "spo2Sample") { t in t.add(column: "auxByte86", .integer) }
+            }
+        }
+        // v43: repair databases that came from the short-lived research branch, where migration IDs
+        // v39/v40 were consumed by the SpO2 columns before upstream main reused those IDs for the PPG
+        // burst index and absolute skin temperature. Those databases skip the upstream migrations by
+        // identifier, so add the missing columns conditionally here. Fresh main databases are no-ops.
+        migrator.registerMigration("v43-repair-research-schema-overlap") { db in
+            let ppgColumns = try db.columns(in: "ppgWaveformSample")
+            if !ppgColumns.contains(where: { $0.name == "burstIndex" }) {
+                try db.alter(table: "ppgWaveformSample") { t in t.add(column: "burstIndex", .integer) }
+            }
+            let dailyColumns = try db.columns(in: "dailyMetric")
+            if !dailyColumns.contains(where: { $0.name == "skinTempC" }) {
+                try db.alter(table: "dailyMetric") { t in t.add(column: "skinTempC", .double) }
+            }
         }
         return migrator
     }

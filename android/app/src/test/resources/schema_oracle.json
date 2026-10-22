@@ -43,7 +43,8 @@
     "v39-ppg-burst-index",
     "v40-daily-skin-temp-absolute",
     "v41-whoop4-spo2-byte85",
-    "v42-whoop4-spo2-byte86"
+    "v42-whoop4-spo2-byte86",
+    "v43-repair-research-schema-overlap"
   ],
   "divergenceReasons": {
     "android-only-experimental-whoop4-spo2": "The iOS research comparator preserves WHOOP 4.0 v12 tail bytes; Android does not yet persist these unvalidated fields.",
